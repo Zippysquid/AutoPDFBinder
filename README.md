@@ -1,11 +1,6 @@
-# Save the README content to a file for user download
-file_path = "/mnt/data/README.md"
+📄 Instant Print-Ready Legal PDF Bundler
 
-readme_content = """# 📄 Instant Print-Ready Legal PDF Bundler
-
-## ⚖️ Overview
-
-This script **automates legal document bundling** by converting an entire directory of Word and PDF files into a **single, print-ready PDF**—fully formatted with:
+This script **automates document bundling** by converting an entire directory of Word and PDF files into a **single, print-ready PDF**—fully formatted with:
 
 - ✅ **Table of contents** (auto-numbered)
 - ✅ **Cover pages for each document**
@@ -13,7 +8,8 @@ This script **automates legal document bundling** by converting an entire direct
 - ✅ **Automatic bookmarks for quick navigation**
 - ✅ **Consistent, professional formatting**
 
-Ideal for **lawyers, paralegals, and legal assistants** handling **case bundles, exhibits, and court filings**—saving hours of manual work! 🚀
+Ideal for **lawyers, paralegals, and legal assistants — saving hours of manual work! 🚀
+
 
 ---
 
