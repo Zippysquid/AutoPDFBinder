@@ -25,13 +25,15 @@ Ideal for **lawyers, paralegals, and legal assistants — saving hours of manual
 
 ---
 
+---
+
 ## 🚀 Installation
 
 ### **Download the Script**
 
 1. Go to the [GitHub Releases](https://github.com/Zippysquid/AutoPDFBinder/releases) page.
 2. Download the latest **AutoPDFBinder.zip** file.
-3. Extract the ZIP file to a convenient location on your computer (e.g., `C:\\AutoPDFBinder`).
+3. Extract the ZIP file to a convenient location on your computer (e.g., `C:\AutoPDFBinder`).
 
 ### **Requirements**
 
@@ -39,3 +41,111 @@ Ensure you have **Python 3.8+** installed along with the necessary dependencies.
 
 ```sh
 pip install -r requirements.txt
+```
+
+If you are running this on Windows, make sure **Microsoft Word is installed** (for DOCX to PDF conversion).
+
+---
+
+## ▶️ How to Run the Script
+
+### **Step 1: Prepare Your Files**
+
+1. Place all your **Word (.docx) and PDF (.pdf) files** in a single folder.
+2. Ensure the files are named properly for correct order in the bundle.
+
+### **Step 2: Run the Script**
+
+#### **Windows (Double Click Method)**
+
+1. Navigate to the folder where you extracted **AutoPDFBinder**.
+2. Locate the **script.py** file.
+3. **Right-click** on `script.py` and select **Open with > Python** (or double-click if Python is set as the default).
+
+#### **Command Line Method (Recommended for Logs)**
+
+1. Open **Command Prompt (cmd)**.
+2. Navigate to the script folder:
+   ```sh
+   cd C:\AutoPDFBinder
+   ```
+3. Run the script:
+   ```sh
+   python script.py
+   ```
+
+### **Step 3: Output Files**
+
+- `final_output.pdf` – The fully compiled and formatted document, ready to print.
+- `script_log.txt` – Log file for troubleshooting.
+
+---
+
+## 🔧 Configuration
+
+You can modify settings at the top of the script:
+
+- `BATES_START = 1` – Change starting page number
+- `BATES_FONT_SIZE = 14` – Adjust Bates numbering size
+- `OUTPUT_DIR = "output"` – Define where output files are saved
+
+---
+
+## 📌 Example
+
+Imagine you have the following directory:
+
+```
+📁 Case_Files/
+   ├── Contract.docx
+   ├── Exhibit_A.pdf
+   ├── Witness_Statement.docx
+   ├── Evidence/
+       ├── Photo1.pdf
+       ├── Report.docx
+```
+
+Running the script will generate:
+
+- A **single merged PDF** containing all documents
+- A **table of contents** listing all files with corresponding Bates numbers
+- **Cover pages** for each document
+- **Bookmarks** for easy navigation
+
+---
+
+## ⚠️ Notes
+
+- **Requires Windows** (due to Microsoft Word COM automation)
+- Ensure Word documents are properly formatted before conversion
+- Large batches may take time to process—allow a few minutes
+
+---
+
+## 📜 License
+
+This project is open-source under the MIT License.
+
+---
+
+## 💬 Support & Contributions
+
+Feel free to **submit issues, suggestions, or pull requests** to improve this tool!
+
+---
+
+## 📦 Setting Up in GitHub Codespaces
+
+To run this script in GitHub Codespaces:
+
+1. Open a new **GitHub Codespace** for your repository.
+2. Run the following commands in the terminal:
+   ```sh
+   pip install -r requirements.txt
+   ```
+3. Place all Word and PDF files in your working directory.
+4. Execute the script:
+   ```sh
+   python script.py
+   ```
+5. Download `final_output.pdf` from the workspace when processing is complete.
