@@ -47,6 +47,11 @@ If you are running this on Windows, make sure **Microsoft Word is installed** (f
 
 ## ▶️ How to Run the Script
 
+> **Note**
+> The main script is now named `autopdfbinder.py` (formerly
+> `enhanced-document-generator.py`). A small wrapper with the old name is
+> included for backward compatibility, so either file can be launched.
+
 ### **Step 1: Prepare Your Files**
 
 1. Place all your **Word (.docx) and PDF (.pdf) files** in a single folder.
