@@ -1,0 +1,4 @@
+docx
+PyPDF2
+PyMuPDF
+comtypes
