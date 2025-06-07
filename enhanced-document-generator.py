@@ -223,6 +223,25 @@ def add_pdf_bookmarks(pdf_path: Path, toc_list: List[List]) -> None:
     doc.close()
     log("PDF bookmarks added.")
 
+def add_toc_links(pdf_path: Path, link_entries: List[Tuple[str, int]], contents_pages: int) -> None:
+    """Insert clickable links on the table of contents pages."""
+    log("Adding clickable links to contents page(s)...")
+    doc = fitz.open(str(pdf_path))
+    for text, target in link_entries:
+        found = False
+        for i in range(contents_pages):
+            page = doc[i]
+            rects = page.search_for(text)
+            for r in rects:
+                link = {"kind": fitz.LINK_GOTO, "page": target - 1, "from": r}
+                page.insert_link(link)
+                found = True
+        if not found:
+            log_debug(f"Link text not found: {text}")
+    doc.save(str(pdf_path))
+    doc.close()
+    log("Contents links added.")
+
 ###############################################################################
 # Document Creation Functions
 ###############################################################################
@@ -419,10 +438,14 @@ def main() -> None:
         merge_pdfs(final_order, FINAL_PDF)
         apply_bates_numbering(FINAL_PDF, start_number=BATES_START, font_size=BATES_FONT_SIZE)
         toc_list = []
+        link_entries = []
         for num, p in real_files:
             title = f"{num} - {p.name}"
             toc_list.append([1, title, bates_map[num]])
+            indent = "    " * num.count(".")
+            link_entries.append((f"{indent}{title}", bates_map[num]))
         add_pdf_bookmarks(FINAL_PDF, toc_list)
+        add_toc_links(FINAL_PDF, link_entries, contents_pages)
         for pattern in ["cover_*.docx", "cover_*.pdf", "file_*.pdf", "contents_dummy.*", "contents.docx", "contents.pdf"]:
             for temp in OUTPUT_DIR.glob(pattern):
                 try:
