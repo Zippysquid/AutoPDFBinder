@@ -1,18 +1,18 @@
 #!/usr/bin/env python
-import os
+"""Automate bundling of Word and PDF documents into a single PDF.
+
+This tool scans the current directory for ``.docx`` and ``.pdf`` files,
+creates cover pages, builds a table of contents and merges everything
+into ``final_output.pdf``. Microsoft Word is required for converting
+``.docx`` files to PDF, so the script is intended for Windows systems.
+"""
+
 import sys
-import subprocess
 import time
 import logging
-import shutil
 from pathlib import Path
 from typing import List, Tuple, Dict
 
-# For Word-to-PDF conversion via COM automation
-import comtypes
-from comtypes.client import CreateObject
-
-# Required packages:
 import docx
 from docx.shared import Pt, Inches, RGBColor
 from docx.oxml.ns import qn
@@ -49,46 +49,58 @@ log = logging.info
 log_error = logging.error
 log_debug = logging.debug
 
+if sys.platform != "win32":
+    log_error(
+        "This script runs only on Windows because it uses Microsoft Word for"
+        " DOCX to PDF conversion."
+    )
+    sys.exit(1)
+
+try:
+    from comtypes.client import CreateObject
+except Exception as exc:  # pragma: no cover - platform specific
+    log_error(
+        "Microsoft Word COM automation is unavailable. Ensure Word is\n"
+        "installed correctly: %s",
+        exc,
+    )
+    sys.exit(1)
+
 ###############################################################################
-# Dependency Installation
+# Dependency Checks
 ###############################################################################
-def install_missing_packages() -> None:
-    required_packages = {
-        "python-docx": "docx",
-        "pypdf2": "PyPDF2",
-        "pymupdf": "fitz",
-        "comtypes": "comtypes"
-    }
-    log(f"Checking dependencies with Python: {sys.executable}")
-    missing = False
-    for pkg_name, import_name in required_packages.items():
+REQUIRED_PACKAGES = ["docx", "PyPDF2", "fitz"]
+
+
+def verify_dependencies() -> None:
+    """Ensure all required packages are available."""
+    missing = []
+    for pkg in REQUIRED_PACKAGES:
         try:
-            __import__(import_name)
-            log(f"Package {pkg_name} ({import_name}) is installed.")
+            __import__(pkg)
         except ImportError:
-            log(f"Installing {pkg_name}...")
-            try:
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "--user", pkg_name],
-                    capture_output=True, text=True, check=True, timeout=300
-                )
-                log(f"Installed {pkg_name}")
-            except subprocess.CalledProcessError as e:
-                log_error(f"Failed to install {pkg_name}: {e.stderr}")
-                missing = True
+            missing.append(pkg)
     if missing:
-        log_error("Critical: Some packages failed to install.")
+        log_error(
+            "Missing required packages: %s. "
+            "Install them with 'pip install -r requirements.txt'."
+            % ", ".join(missing)
+        )
         sys.exit(1)
 
-install_missing_packages()
+
+verify_dependencies()
 
 ###############################################################################
 # Helper Functions
 ###############################################################################
+
+
 def remove_table_borders(table: docx.table.Table) -> None:
     """Remove table-level borders from a docx table."""
     for border in table._element.xpath('.//w:tblBorders'):
         border.getparent().remove(border)
+
 
 def remove_cell_borders(table: docx.table.Table) -> None:
     """Remove cell-level borders from a docx table."""
@@ -96,6 +108,7 @@ def remove_cell_borders(table: docx.table.Table) -> None:
         for cell in row.cells:
             for border in cell._tc.xpath('.//w:tcBorders'):
                 border.getparent().remove(border)
+
 
 def set_cell_margins(cell, top=0, left=0, bottom=0, right=0):
     """
@@ -108,13 +121,19 @@ def set_cell_margins(cell, top=0, left=0, bottom=0, right=0):
     if tcMar is None:
         tcMar = OxmlElement('w:tcMar')
         tcPr.append(tcMar)
-    for margin, value in (('top', top), ('left', left), ('bottom', bottom), ('right', right)):
+    for margin, value in (
+        ('top', top),
+        ('left', left),
+        ('bottom', bottom),
+        ('right', right),
+    ):
         element = tcMar.find(qn(f'w:{margin}'))
         if element is None:
             element = OxmlElement(f'w:{margin}')
             tcMar.append(element)
         element.set(qn('w:w'), str(value))
         element.set(qn('w:type'), 'dxa')
+
 
 def apply_document_styles(doc: docx.Document) -> None:
     """Apply consistent styling (font, margins, spacing) to the document."""
@@ -131,6 +150,7 @@ def apply_document_styles(doc: docx.Document) -> None:
     section.bottom_margin = Inches(1)
     section.left_margin = Inches(1)
     section.right_margin = Inches(1)
+
 
 def convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> None:
     """Convert a DOCX file to PDF using Microsoft Word COM automation."""
@@ -155,6 +175,7 @@ def convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> None:
         raise FileNotFoundError(f"Conversion failed: {pdf_path} not created.")
     log(f"Converted {docx_path.name} -> {pdf_path.name}")
 
+
 def pdf_page_count(pdf_path: Path) -> int:
     """Return the number of pages in a PDF file."""
     try:
@@ -163,6 +184,7 @@ def pdf_page_count(pdf_path: Path) -> int:
     except Exception as e:
         log_error(f"Error counting pages in {pdf_path}: {e}")
         return 0
+
 
 def merge_pdfs(pdf_paths: List[Path], final_pdf: Path) -> None:
     """Merge PDFs in the provided order into a final PDF."""
@@ -185,8 +207,14 @@ def merge_pdfs(pdf_paths: List[Path], final_pdf: Path) -> None:
         raise FileNotFoundError(f"Merged PDF not created: {final_pdf}")
     log(f"Merged PDF saved: {final_pdf.name}")
 
-def apply_bates_numbering(pdf_path: Path, start_number: int = BATES_START, font_size: int = BATES_FONT_SIZE) -> None:
-    """Apply sequential Bates numbering with a subtle background to each page."""
+
+def apply_bates_numbering(
+    pdf_path: Path,
+    start_number: int = BATES_START,
+    font_size: int = BATES_FONT_SIZE,
+) -> None:
+    """Apply sequential Bates numbering with a subtle background
+    to each page."""
     log(f"Applying Bates numbering to {pdf_path.name}")
     doc = fitz.open(str(pdf_path))
     for i, page in enumerate(doc):
@@ -209,6 +237,7 @@ def apply_bates_numbering(pdf_path: Path, start_number: int = BATES_START, font_
     temp_pdf.replace(pdf_path)
     log(f"Bates numbering applied to {pdf_path.name}")
 
+
 def add_pdf_bookmarks(pdf_path: Path, toc_list: List[List]) -> None:
     """
     Add bookmarks (outline) to the merged PDF.
@@ -226,9 +255,12 @@ def add_pdf_bookmarks(pdf_path: Path, toc_list: List[List]) -> None:
 ###############################################################################
 # Document Creation Functions
 ###############################################################################
+
+
 def create_cover_page(cover_docx: Path, number: str, file_name: str) -> None:
     """
-    Generate a cover page with a decorative header, document number, and filename.
+    Generate a cover page with a decorative header,
+    document number, and filename.
     The date is removed from cover pages.
     """
     log(f"Creating cover page: {cover_docx.name}")
@@ -263,7 +295,12 @@ def create_cover_page(cover_docx: Path, number: str, file_name: str) -> None:
     footer_run.font.color.rgb = RGBColor(100, 100, 100)
     doc.save(str(cover_docx))
 
-def create_contents_page(contents_docx: Path, all_items: List[Tuple[str, Path]], bates_map: Dict[str, int]) -> None:
+
+def create_contents_page(
+    contents_docx: Path,
+    all_items: List[Tuple[str, Path]],
+    bates_map: Dict[str, int],
+) -> None:
     """
     Create a formatted table of contents with document names, Bates numbers,
     and the generation date in the header.
@@ -341,24 +378,35 @@ def create_contents_page(contents_docx: Path, all_items: List[Tuple[str, Path]],
             run_right.font.size = Pt(11)
     footer = doc.add_paragraph()
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    footer_run = footer.add_run("")
+    footer.add_run("")
     doc.save(str(contents_docx))
     log(f"Contents page saved: {contents_docx.name}")
 
 ###############################################################################
 # Main Execution Flow
 ###############################################################################
+
+
 def main() -> None:
     try:
         OUTPUT_DIR.mkdir(exist_ok=True)
         log(f"Output directory ready: {OUTPUT_DIR}")
         all_items: List[Tuple[str, Path]] = []
+
         def scan_dir(dirpath: Path, prefix: str = ""):
             if OUTPUT_DIR in dirpath.parents or dirpath == OUTPUT_DIR:
                 return
             files = sorted(
-                [f for f in dirpath.iterdir() if f.is_file() and f.suffix.lower() in [".docx", ".pdf"] and f != FINAL_PDF],
-                key=lambda x: x.name.lower()
+                [
+                    f
+                    for f in dirpath.iterdir()
+                    if (
+                        f.is_file()
+                        and f.suffix.lower() in [".docx", ".pdf"]
+                        and f != FINAL_PDF
+                    )
+                ],
+                key=lambda x: x.name.lower(),
             )
             i = 1
             for f in files:
@@ -366,8 +414,12 @@ def main() -> None:
                 all_items.append((num, f))
                 i += 1
             subdirs = sorted(
-                [d for d in dirpath.iterdir() if d.is_dir() and d != OUTPUT_DIR],
-                key=lambda x: x.name.lower()
+                [
+                    d
+                    for d in dirpath.iterdir()
+                    if d.is_dir() and d != OUTPUT_DIR
+                ],
+                key=lambda x: x.name.lower(),
             )
             j = 1
             for d in subdirs:
@@ -378,7 +430,11 @@ def main() -> None:
         scan_dir(SCRIPT_DIR, "")
         real_files: List[Tuple[str, Path]] = [
             (num, p) for num, p in all_items
-            if p.is_file() and p.suffix.lower() in [".docx", ".pdf"] and p != FINAL_PDF
+            if (
+                p.is_file()
+                and p.suffix.lower() in [".docx", ".pdf"]
+                and p != FINAL_PDF
+            )
         ]
         processed: Dict[str, Tuple[Path, int, Path, int]] = {}
         for num, p in real_files:
@@ -394,7 +450,11 @@ def main() -> None:
                 file_pdf = p
             file_pages = pdf_page_count(file_pdf)
             processed[num] = (cover_pdf, cover_pages, file_pdf, file_pages)
-            log_debug(f"Processed {num}: cover={cover_pdf.name} ({cover_pages} pages), file={file_pdf.name} ({file_pages} pages)")
+            log_debug(
+                f"Processed {num}: cover={cover_pdf.name} "
+                f"({cover_pages} pages), "
+                f"file={file_pdf.name} ({file_pages} pages)"
+            )
         dummy_contents_docx = OUTPUT_DIR / "contents_dummy.docx"
         create_contents_page(dummy_contents_docx, all_items, {})
         dummy_contents_pdf = OUTPUT_DIR / "contents_dummy.pdf"
@@ -417,13 +477,24 @@ def main() -> None:
             cover_pdf, _, file_pdf, _ = processed[num]
             final_order.extend([cover_pdf, file_pdf])
         merge_pdfs(final_order, FINAL_PDF)
-        apply_bates_numbering(FINAL_PDF, start_number=BATES_START, font_size=BATES_FONT_SIZE)
+        apply_bates_numbering(
+            FINAL_PDF,
+            start_number=BATES_START,
+            font_size=BATES_FONT_SIZE,
+        )
         toc_list = []
         for num, p in real_files:
             title = f"{num} - {p.name}"
             toc_list.append([1, title, bates_map[num]])
         add_pdf_bookmarks(FINAL_PDF, toc_list)
-        for pattern in ["cover_*.docx", "cover_*.pdf", "file_*.pdf", "contents_dummy.*", "contents.docx", "contents.pdf"]:
+        for pattern in [
+            "cover_*.docx",
+            "cover_*.pdf",
+            "file_*.pdf",
+            "contents_dummy.*",
+            "contents.docx",
+            "contents.pdf",
+        ]:
             for temp in OUTPUT_DIR.glob(pattern):
                 try:
                     temp.unlink()
@@ -434,6 +505,7 @@ def main() -> None:
     except Exception as e:
         log_error(f"Fatal error: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

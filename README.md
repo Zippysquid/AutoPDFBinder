@@ -31,9 +31,7 @@ Ideal for **lawyers, paralegals, and legal assistants — saving hours of manual
 
 ### **Download the Script**
 
-1. Go to the [GitHub Releases](https://github.com/Zippysquid/AutoPDFBinder/releases) page.
-2. Download the latest **AutoPDFBinder.zip** file.
-3. Extract the ZIP file to a convenient location on your computer (e.g., `C:\AutoPDFBinder`).
+1. Clone or download this repository to a folder of your choice (e.g., `C:\AutoPDFBinder`).
 
 ### **Requirements**
 
@@ -59,8 +57,8 @@ If you are running this on Windows, make sure **Microsoft Word is installed** (f
 #### **Windows (Double Click Method)**
 
 1. Navigate to the folder where you extracted **AutoPDFBinder**.
-2. Locate the **script.py** file.
-3. **Right-click** on `script.py` and select **Open with > Python** (or double-click if Python is set as the default).
+2. Locate the **autopdfbinder.py** file.
+3. **Right-click** on `autopdfbinder.py` and select **Open with > Python** (or double-click if Python is set as the default).
 
 #### **Command Line Method (Recommended for Logs)**
 
@@ -71,7 +69,7 @@ If you are running this on Windows, make sure **Microsoft Word is installed** (f
    ```
 3. Run the script:
    ```sh
-   python script.py
+   python autopdfbinder.py
    ```
 
 ### **Step 3: Output Files**
@@ -146,6 +144,6 @@ To run this script in GitHub Codespaces:
 3. Place all Word and PDF files in your working directory.
 4. Execute the script:
    ```sh
-   python script.py
+   python autopdfbinder.py
    ```
 5. Download `final_output.pdf` from the workspace when processing is complete.
