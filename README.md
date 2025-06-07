@@ -37,7 +37,9 @@ Ideal for **lawyers, paralegals, and legal assistants — saving hours of manual
 
 ### **Requirements**
 
-Ensure you have **Python 3.8+** installed along with the necessary dependencies.
+Ensure you have **Python 3.8+** installed. The script will automatically install
+its required Python packages the first time you run it. If this step fails for
+any reason, you can install the dependencies manually:
 
 ```sh
 pip install -r requirements.txt
@@ -139,13 +141,9 @@ Feel free to **submit issues, suggestions, or pull requests** to improve this to
 To run this script in GitHub Codespaces:
 
 1. Open a new **GitHub Codespace** for your repository.
-2. Run the following commands in the terminal:
-   ```sh
-   pip install -r requirements.txt
-   ```
-3. Place all Word and PDF files in your working directory.
-4. Execute the script:
+2. Place all Word and PDF files in your working directory.
+3. Execute the script (dependencies will be installed automatically):
    ```sh
    python script.py
    ```
-5. Download `final_output.pdf` from the workspace when processing is complete.
+4. Download `final_output.pdf` from the workspace when processing is complete.
