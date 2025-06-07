@@ -316,7 +316,7 @@ def create_contents_page(contents_docx: Path, all_items: List[Tuple[str, Path]],
     table.autofit = False
     if hasattr(table, "allow_autofit"):
         table.allow_autofit = False
-    widths = [Inches(6.0), Inches(1.0)]
+    widths = [Inches(5.3), Inches(1.2)]
     for col_idx, width in enumerate(widths):
         for cell in table.columns[col_idx].cells:
             cell.width = width
@@ -326,7 +326,8 @@ def create_contents_page(contents_docx: Path, all_items: List[Tuple[str, Path]],
     header_row.cells[1].text = "Page"
     for cell in header_row.cells:
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        set_cell_margins(cell, top=100, bottom=100)
+        right_margin = 200 if cell is header_row.cells[1] else 0
+        set_cell_margins(cell, top=100, bottom=100, right=right_margin)
         for paragraph in cell.paragraphs:
             for run in paragraph.runs:
                 run.font.bold = True
@@ -351,7 +352,7 @@ def create_contents_page(contents_docx: Path, all_items: List[Tuple[str, Path]],
         cell_right = table.cell(row_idx, 1)
         cell_right.text = ""
         cell_right.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        set_cell_margins(cell_right, top=100, bottom=100)
+        set_cell_margins(cell_right, top=100, bottom=100, right=200)
         p_right = cell_right.paragraphs[0]
         p_right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         if num in bates_map and path_obj.is_file():
