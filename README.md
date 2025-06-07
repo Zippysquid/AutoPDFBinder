@@ -2,7 +2,7 @@
 
 This script **automates document bundling** by converting an entire directory of Word and PDF files into a **single, print-ready PDF**—fully formatted with:
 
-- ✅ **Table of contents** (auto-numbered)
+- ✅ **Table of contents** (auto-numbered with clickable links)
 - ✅ **Cover pages for each document**
 - ✅ **Bates numbering** for easy referencing
 - ✅ **Automatic bookmarks for quick navigation**
@@ -17,7 +17,7 @@ Ideal for **lawyers, paralegals, and legal assistants — saving hours of manual
 
 - 📂 **Batch Processing** – Processes an entire directory in one go
 - 📝 **Word to PDF Conversion** – Automatically converts DOCX files to PDFs
-- 📑 **Table of Contents** – Generates a structured TOC with numbered pages
+- 📑 **Table of Contents** – Generates a structured, clickable TOC with numbered pages
 - 🔢 **Bates Numbering** – Applies sequential page numbering for legal documents
 - 🔖 **PDF Bookmarks** – Adds easy navigation points to the final document
 - 📏 **Consistent Formatting** – Ensures a clean, professional look with standard margins & fonts
