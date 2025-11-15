@@ -16,6 +16,13 @@ script_log.txt
 # Configuration (user-specific)
 config.json
 
+# Test files
+test_docs/
+create_test_files.py
+Document*.pdf
+Report*.pdf
+SubDoc*.pdf
+
 # IDE
 .vscode/
 .idea/

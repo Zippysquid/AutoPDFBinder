@@ -17,9 +17,15 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass, asdict
 
-# For Word-to-PDF conversion via COM automation
-import comtypes
-from comtypes.client import CreateObject
+# For Word-to-PDF conversion via COM automation (Windows only)
+try:
+    import comtypes
+    from comtypes.client import CreateObject
+    HAS_COM = True
+except (ImportError, OSError):
+    HAS_COM = False
+    # COM not available (not on Windows or comtypes not installed)
+    pass
 
 # Required packages:
 import docx
@@ -293,6 +299,10 @@ def apply_document_styles(doc: docx.Document) -> None:
 
 def convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> bool:
     """Convert a DOCX file to PDF using Microsoft Word COM automation."""
+    if not HAS_COM:
+        log_error(f"Cannot convert {docx_path.name}: COM automation not available (Windows with MS Word required)")
+        return False
+
     log(f"Converting {docx_path.name} -> {pdf_path.name}")
     if not docx_path.exists():
         log_error(f"{docx_path} not found.")
@@ -437,6 +447,51 @@ def add_toc_links(pdf_path: Path, link_entries: List[Tuple[str, int]], contents_
 ###############################################################################
 # Document Creation Functions
 ###############################################################################
+def create_cover_page_pdf(cover_pdf: Path, number: str, file_name: str, actual_path: Optional[Path] = None) -> None:
+    """Generate a cover page directly as PDF using PyMuPDF (cross-platform)."""
+    log_debug(f"Creating cover page (PDF): {cover_pdf.name}")
+
+    doc = fitz.open()
+    page = doc.new_page(width=612, height=792)  # US Letter
+
+    # Colors from DESIGN_CONFIG
+    primary_color = tuple(c/255.0 for c in DESIGN_CONFIG['primary_color'])
+    text_gray = tuple(c/255.0 for c in DESIGN_CONFIG['text_gray'])
+
+    # Header background (navy blue bar)
+    header_rect = fitz.Rect(50, 50, 562, 120)
+    page.draw_rect(header_rect, color=primary_color, fill=primary_color)
+
+    # Document number in header
+    page.insert_text((306, 95), f"DOCUMENT {number}",
+                     fontname="helv-bold", fontsize=14, color=(1, 1, 1), align=1)
+
+    # Main title
+    title_y = 300
+    page.insert_text((306, title_y), file_name,
+                     fontname="helv-bold", fontsize=22, color=(0, 0, 0), align=1)
+
+    # Metadata box
+    if DESIGN_CONFIG['show_metadata']:
+        meta_y = 400
+        metadata = [
+            ("Document Type:", get_file_type(file_name)),
+            ("File Size:", get_file_size_if_available(actual_path) if actual_path else "N/A"),
+            ("Generated:", time.strftime("%B %d, %Y at %I:%M %p"))
+        ]
+
+        for label, value in metadata:
+            page.insert_text((150, meta_y), label, fontname="helv-bold", fontsize=10, color=text_gray)
+            page.insert_text((280, meta_y), value, fontname="helv", fontsize=10, color=(0, 0, 0))
+            meta_y += 25
+
+    # Bottom line
+    line_y = 700
+    page.draw_line((100, line_y), (512, line_y), color=(0.8, 0.8, 0.8), width=1)
+
+    doc.save(str(cover_pdf))
+    doc.close()
+
 def create_cover_page(cover_docx: Path, number: str, file_name: str, actual_path: Optional[Path] = None) -> None:
     """Generate an enhanced cover page with professional design elements."""
     log_debug(f"Creating cover page: {cover_docx.name}")
@@ -899,17 +954,23 @@ def main() -> None:
             try:
                 print_progress(idx, stats.total_files, "Processing files")
 
-                cover_docx = OUTPUT_DIR / f"cover_{num}.docx"
                 cover_pdf = OUTPUT_DIR / f"cover_{num}.pdf"
 
-                create_cover_page(cover_docx, num, p.name, p)
-
-                if not convert_docx_to_pdf(cover_docx, cover_pdf):
-                    raise Exception("Cover page conversion failed")
+                # Create cover page (use PDF method if COM not available)
+                if HAS_COM:
+                    cover_docx = OUTPUT_DIR / f"cover_{num}.docx"
+                    create_cover_page(cover_docx, num, p.name, p)
+                    if not convert_docx_to_pdf(cover_docx, cover_pdf):
+                        raise Exception("Cover page conversion failed")
+                else:
+                    # Direct PDF creation (cross-platform)
+                    create_cover_page_pdf(cover_pdf, num, p.name, p)
 
                 cover_pages = pdf_page_count(cover_pdf)
 
                 if p.suffix.lower() == ".docx":
+                    if not HAS_COM:
+                        raise Exception("DOCX conversion requires Windows + MS Word")
                     file_pdf = OUTPUT_DIR / f"file_{num}.pdf"
                     if not convert_docx_to_pdf(p, file_pdf):
                         raise Exception("Document conversion failed")
