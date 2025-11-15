@@ -16,6 +16,11 @@ script_log.txt
 # Configuration (user-specific)
 config.json
 
+# API Keys and Secrets (NEVER COMMIT THESE!)
+.env
+*.key
+secrets.json
+
 # Test files
 test_docs/
 create_test_files.py

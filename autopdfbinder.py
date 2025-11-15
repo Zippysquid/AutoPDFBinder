@@ -587,19 +587,20 @@ def create_cover_page_pdf(cover_pdf: Path, number: str, file_name: str, actual_p
     header_text = f"DOCUMENT {number}"
     if ai_data and ai_data.get('category'):
         header_text += f" | {ai_data['category']}"
+    # Center text manually (page width is 612, center is 306)
     page.insert_text((306, 95), header_text,
-                     fontname="helv-bold", fontsize=14, color=(1, 1, 1), align=1)
+                     fontname="helv", fontsize=14, color=(1, 1, 1))
 
     # Main title (use AI-extracted title if available)
     title_y = 300
     display_title = ai_data.get('title') if ai_data and ai_data.get('title') else file_name
     page.insert_text((306, title_y), display_title,
-                     fontname="helv-bold", fontsize=20, color=(0, 0, 0), align=1)
+                     fontname="helv", fontsize=20, color=(0, 0, 0))
 
     # AI description (if available)
     if ai_data and ai_data.get('description'):
         page.insert_text((306, title_y + 30), ai_data['description'],
-                         fontname="helv-oblique", fontsize=11, color=text_gray, align=1)
+                         fontname="helv", fontsize=11, color=text_gray)
 
     # Metadata box (enhanced with AI data)
     if DESIGN_CONFIG['show_metadata']:
@@ -633,7 +634,7 @@ def create_cover_page_pdf(cover_pdf: Path, number: str, file_name: str, actual_p
 
         for label, value in metadata:
             if value:  # Only show non-null values
-                page.insert_text((120, meta_y), label, fontname="helv-bold", fontsize=10, color=text_gray)
+                page.insert_text((120, meta_y), label, fontname="helv", fontsize=10, color=text_gray)
                 page.insert_text((250, meta_y), str(value), fontname="helv", fontsize=10, color=(0, 0, 0))
                 meta_y += 22
 
@@ -644,7 +645,7 @@ def create_cover_page_pdf(cover_pdf: Path, number: str, file_name: str, actual_p
     # AI attribution (if used)
     if ai_data:
         page.insert_text((306, 750), "Analyzed by Claude AI",
-                         fontname="helv-oblique", fontsize=8, color=(0.7, 0.7, 0.7), align=1)
+                         fontname="helv", fontsize=8, color=(0.7, 0.7, 0.7))
 
     doc.save(str(cover_pdf))
     doc.close()
