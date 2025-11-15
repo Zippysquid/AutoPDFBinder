@@ -171,8 +171,6 @@ def install_missing_packages() -> None:
         log_error("Critical: Some packages failed to install.")
         sys.exit(1)
 
-install_missing_packages()
-
 ###############################################################################
 # Progress Tracking
 ###############################################################################
@@ -225,10 +223,8 @@ def set_cell_margins(cell, top=0, left=0, bottom=0, right=0):
 
 def set_cell_background(cell, color):
     """Set background color for a table cell."""
-    if isinstance(color, RGBColor):
-        hex_color = '%02x%02x%02x' % (color[0], color[1], color[2])
-    else:
-        hex_color = '%02x%02x%02x' % color
+    # Color should be an RGB tuple (r, g, b)
+    hex_color = '%02x%02x%02x' % color
 
     shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_color}"/>')
     cell._tc.get_or_add_tcPr().append(shading_elm)
@@ -238,10 +234,8 @@ def set_table_borders(table, color = None, width: int = 1):
     if color is None:
         color = (200, 200, 200)
 
-    if isinstance(color, RGBColor):
-        hex_color = '%02x%02x%02x' % (color[0], color[1], color[2])
-    else:
-        hex_color = '%02x%02x%02x' % color
+    # Color should be an RGB tuple (r, g, b)
+    hex_color = '%02x%02x%02x' % color
 
     tbl = table._element
     tblPr = tbl.tblPr
@@ -801,12 +795,14 @@ def build_nested_toc(all_items: List[Tuple[str, Path]], real_files: List[Tuple[s
         if path_obj.is_dir():
             # Add folder bookmark
             title = f"{num} - {path_obj.name}"
-            # Use the first file's page in this folder as the target
+            # Use the first SUCCESSFUL file's page in this folder as the target
             first_file_page = None
             for file_num, file_path in real_files:
                 if file_num.startswith(num + "."):
-                    first_file_page = bates_map.get(file_num)
-                    break
+                    page = bates_map.get(file_num)
+                    if page is not None:  # Found a successful file
+                        first_file_page = page
+                        break
             if first_file_page:
                 toc_list.append([level, title, first_file_page])
                 folder_map[num] = title
@@ -830,6 +826,9 @@ def main() -> None:
     if args.create_config:
         save_default_config()
         return
+
+    # Install missing packages (only when actually running, not for --help or --create-config)
+    install_missing_packages()
 
     try:
         stats.start_time = time.time()
@@ -939,6 +938,25 @@ def main() -> None:
 
         # Update real_files to only include successfully processed files
         real_files = [(num, p) for num, p in real_files if num in processed]
+
+        # Filter all_items to only include successfully processed files and their parent folders
+        # Keep directories and files that were successfully processed
+        processed_nums = set(processed.keys())
+        filtered_all_items = []
+        for num, path_obj in all_items:
+            if path_obj.is_dir():
+                # Keep folder if any of its children were successfully processed
+                has_successful_child = any(
+                    file_num.startswith(num + ".")
+                    for file_num in processed_nums
+                )
+                if has_successful_child:
+                    filtered_all_items.append((num, path_obj))
+            elif num in processed_nums:
+                # Keep file if it was successfully processed
+                filtered_all_items.append((num, path_obj))
+
+        all_items = filtered_all_items
 
         # Create contents page
         dummy_contents_docx = OUTPUT_DIR / "contents_dummy.docx"
