@@ -39,9 +39,18 @@ import PyPDF2
 import fitz  # PyMuPDF
 
 # AI Integration (optional)
+import base64
+
+# OpenAI support (primary)
+try:
+    from openai import OpenAI
+    HAS_OPENAI = True
+except ImportError:
+    HAS_OPENAI = False
+
+# Anthropic support (fallback)
 try:
     import anthropic
-    import base64
     HAS_ANTHROPIC = True
 except ImportError:
     HAS_ANTHROPIC = False
@@ -75,9 +84,11 @@ DESIGN_CONFIG = {
     'nested_bookmarks': True,            # Enable nested bookmark hierarchy
     'ai_features': {
         'enabled': False,                # Enable AI document analysis
-        'max_pages_to_analyze': 3,       # Number of pages to send to Claude
+        'max_pages_to_analyze': 3,       # Number of pages to send to AI
         'cache_results': True,           # Cache AI analysis results
-        'model': 'claude-3-5-sonnet-20241022'
+        'provider': 'auto',              # 'openai', 'anthropic', or 'auto' (OpenAI -> Anthropic fallback)
+        'openai_model': 'gpt-4o',        # OpenAI model: gpt-4o, gpt-4-turbo, gpt-4o-mini
+        'anthropic_model': 'claude-3-5-sonnet-20241022'  # Anthropic model
     }
 }
 
@@ -330,28 +341,90 @@ def extract_pdf_preview(pdf_path: Path, max_pages: int = 3) -> List[bytes]:
         log_error(f"Error extracting preview from {pdf_path.name}: {e}")
         return []
 
-def analyze_document_with_ai(pdf_path: Path, filename: str) -> Optional[Dict]:
-    """Use Claude API to analyze document and extract metadata"""
-    if not HAS_ANTHROPIC:
+def analyze_document_with_openai(pdf_path: Path, filename: str, images: List[bytes]) -> Optional[Dict]:
+    """Use OpenAI API to analyze document and extract metadata"""
+    if not HAS_OPENAI:
         return None
 
-    if not DESIGN_CONFIG.get('ai_features', {}).get('enabled', False):
+    api_key = os.environ.get('OPENAI_API_KEY')
+    if not api_key:
+        return None
+
+    try:
+        client = OpenAI(api_key=api_key)
+
+        # Build message content with images
+        content = [{
+            "type": "text",
+            "text": f"""Analyze this document (filename: {filename}).
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "title": "Actual document title from content (or null)",
+  "description": "One-line description max 100 chars (or null)",
+  "document_type": "Contract|Invoice|Report|Letter|Agreement|Memo|Other",
+  "date": "YYYY-MM-DD format if visible (or null)",
+  "parties": ["Party 1", "Party 2"] or null,
+  "reference_number": "Document/case/reference number (or null)",
+  "category": "Legal|Financial|Administrative|Technical|Other",
+  "quality_issues": "Brief note if pages corrupt/illegible (or null)"
+}}
+
+Rules:
+- Use null for any information not clearly visible
+- Keep description concise and professional
+- Extract exact dates in YYYY-MM-DD format
+- Identify all parties mentioned (people/organizations)
+- Be accurate - don't guess or infer beyond what's visible"""
+        }]
+
+        # Add images
+        for img in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{base64.b64encode(img).decode()}"
+                }
+            })
+
+        # Call OpenAI API
+        model = DESIGN_CONFIG['ai_features'].get('openai_model', 'gpt-4o')
+        log_debug(f"Analyzing {filename} with OpenAI {model}...")
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content}],
+            max_tokens=1024
+        )
+
+        # Parse JSON response
+        response_text = response.choices[0].message.content
+        ai_data = json.loads(response_text)
+
+        log(f"✓ AI analyzed (OpenAI): {filename}")
+        log_debug(f"  Title: {ai_data.get('title', 'N/A')}")
+        log_debug(f"  Type: {ai_data.get('document_type', 'N/A')}")
+
+        return ai_data
+
+    except json.JSONDecodeError as e:
+        log_warning(f"OpenAI returned invalid JSON for {filename}: {e}")
+        return None
+    except Exception as e:
+        log_warning(f"OpenAI analysis failed for {filename}: {e}")
+        return None
+
+
+def analyze_document_with_anthropic(pdf_path: Path, filename: str, images: List[bytes]) -> Optional[Dict]:
+    """Use Anthropic Claude API to analyze document and extract metadata"""
+    if not HAS_ANTHROPIC:
         return None
 
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
-        log_warning("AI features enabled but ANTHROPIC_API_KEY not set")
         return None
 
     try:
-        # Extract preview images
-        max_pages = DESIGN_CONFIG['ai_features'].get('max_pages_to_analyze', 3)
-        images = extract_pdf_preview(pdf_path, max_pages)
-
-        if not images:
-            return None
-
-        # Prepare Claude API call
         client = anthropic.Anthropic(api_key=api_key)
 
         # Build message content with images
@@ -392,8 +465,8 @@ Rules:
         })
 
         # Call Claude API
-        model = DESIGN_CONFIG['ai_features'].get('model', 'claude-3-5-sonnet-20241022')
-        log_debug(f"Analyzing {filename} with Claude {model}...")
+        model = DESIGN_CONFIG['ai_features'].get('anthropic_model', 'claude-3-5-sonnet-20241022')
+        log_debug(f"Analyzing {filename} with Anthropic {model}...")
 
         message = client.messages.create(
             model=model,
@@ -405,18 +478,64 @@ Rules:
         response_text = message.content[0].text
         ai_data = json.loads(response_text)
 
-        log(f"✓ AI analyzed: {filename}")
+        log(f"✓ AI analyzed (Anthropic): {filename}")
         log_debug(f"  Title: {ai_data.get('title', 'N/A')}")
         log_debug(f"  Type: {ai_data.get('document_type', 'N/A')}")
 
         return ai_data
 
     except json.JSONDecodeError as e:
-        log_warning(f"AI returned invalid JSON for {filename}: {e}")
+        log_warning(f"Anthropic returned invalid JSON for {filename}: {e}")
         return None
     except Exception as e:
-        log_warning(f"AI analysis failed for {filename}: {e}")
+        log_warning(f"Anthropic analysis failed for {filename}: {e}")
         return None
+
+
+def analyze_document_with_ai(pdf_path: Path, filename: str) -> Optional[Dict]:
+    """
+    Use AI API to analyze document and extract metadata.
+
+    Provider priority based on config:
+    - 'openai': Use OpenAI only
+    - 'anthropic': Use Anthropic only
+    - 'auto': Try OpenAI first, fallback to Anthropic, then None
+    """
+    if not DESIGN_CONFIG.get('ai_features', {}).get('enabled', False):
+        return None
+
+    # Check if any provider is available
+    if not HAS_OPENAI and not HAS_ANTHROPIC:
+        log_warning("AI features enabled but no AI packages installed (openai, anthropic)")
+        return None
+
+    # Extract preview images (shared by all providers)
+    max_pages = DESIGN_CONFIG['ai_features'].get('max_pages_to_analyze', 3)
+    images = extract_pdf_preview(pdf_path, max_pages)
+
+    if not images:
+        return None
+
+    # Determine provider strategy
+    provider = DESIGN_CONFIG['ai_features'].get('provider', 'auto')
+
+    # Try OpenAI first (if configured)
+    if provider in ['openai', 'auto']:
+        result = analyze_document_with_openai(pdf_path, filename, images)
+        if result:
+            return result
+        elif provider == 'openai':
+            # OpenAI-only mode, don't try fallback
+            return None
+
+    # Try Anthropic (if configured or as fallback)
+    if provider in ['anthropic', 'auto']:
+        result = analyze_document_with_anthropic(pdf_path, filename, images)
+        if result:
+            return result
+
+    # Both failed or no provider configured
+    return None
 
 def convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> bool:
     """Convert a DOCX file to PDF using Microsoft Word COM automation."""

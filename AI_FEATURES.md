@@ -1,6 +1,11 @@
 # AI-Powered Document Intelligence
 
-AutoPDFBinder now includes **optional AI-powered document analysis** using Claude AI to dramatically improve document processing quality.
+AutoPDFBinder now includes **optional AI-powered document analysis** using OpenAI or Claude AI to dramatically improve document processing quality.
+
+**Multi-Provider Support:**
+- **OpenAI GPT-4o** (Primary) - Latest vision model with excellent document understanding
+- **Anthropic Claude** (Fallback) - Backup provider if OpenAI unavailable
+- **Auto Fallback** - Automatically tries OpenAI first, falls back to Claude, or skips AI if both fail
 
 ## What It Does
 
@@ -49,24 +54,49 @@ TOC Entry:
 
 ## Setup
 
-### 1. Install the Anthropic SDK
+### 1. Install AI SDKs
+
+**Option A: OpenAI (Recommended)**
+```bash
+pip install openai
+```
+
+**Option B: Anthropic Claude**
 ```bash
 pip install anthropic
 ```
 
-### 2. Get an API Key
-- Sign up at https://console.anthropic.com/
-- Create an API key
-- Set it as an environment variable:
-
-**Windows:**
-```cmd
-set ANTHROPIC_API_KEY=sk-ant-api03-...
+**Option C: Both (Best - automatic fallback)**
+```bash
+pip install openai anthropic
 ```
 
-**Linux/Mac:**
+### 2. Get API Keys
+
+**OpenAI:**
+- Sign up at https://platform.openai.com/
+- Create an API key under "API keys"
+- Set environment variable:
+```bash
+export OPENAI_API_KEY=sk-proj-...
+```
+
+**Anthropic (Optional Fallback):**
+- Sign up at https://console.anthropic.com/
+- Create an API key
+- Set environment variable:
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+**Using .env File (Recommended):**
+```bash
+# Create .env file in project root
+echo "OPENAI_API_KEY=sk-proj-..." >> .env
+echo "ANTHROPIC_API_KEY=sk-ant-api03-..." >> .env
+
+# Use the helper script
+./run_with_ai.sh
 ```
 
 ### 3. Enable AI Features
@@ -83,10 +113,17 @@ Edit `config.json`:
   "ai_features": {
     "enabled": true,
     "max_pages_to_analyze": 3,
-    "model": "claude-3-5-sonnet-20241022"
+    "provider": "auto",
+    "openai_model": "gpt-4o",
+    "anthropic_model": "claude-3-5-sonnet-20241022"
   }
 }
 ```
+
+**Provider Options:**
+- `"auto"` - Try OpenAI first, fallback to Anthropic (recommended)
+- `"openai"` - Use OpenAI only
+- `"anthropic"` - Use Anthropic only
 
 ## Usage Examples
 
@@ -113,19 +150,35 @@ python autopdfbinder.py --use-ai --output case_bundle.pdf --bates-start 100
 
 ## Cost Estimation
 
-Claude 3.5 Sonnet pricing:
-- **Input**: $3 / million tokens
-- **Output**: $15 / million tokens
+### OpenAI GPT-4o (Primary)
+- **Input**: $2.50 / million tokens
+- **Output**: $10 / million tokens
 
 **Per document** (3 pages analyzed):
 - Images: ~2000 tokens
 - Analysis: ~200 tokens
+- **Cost: ~$0.005 per document**
+
+**Real-world examples:**
+- 10 documents: ~$0.05
+- 100 documents: ~$0.50
+- 1000 documents: ~$5.00
+
+### Anthropic Claude 3.5 Sonnet (Fallback)
+- **Input**: $3 / million tokens
+- **Output**: $15 / million tokens
+
+**Per document** (3 pages analyzed):
 - **Cost: ~$0.006 per document**
 
 **Real-world examples:**
 - 10 documents: ~$0.06
 - 100 documents: ~$0.60
 - 1000 documents: ~$6.00
+
+### GPT-4o Mini (Budget Option)
+Set `"openai_model": "gpt-4o-mini"` in config:
+- **Cost: ~$0.0005 per document** (10x cheaper!)
 
 **Extremely affordable for the value added!**
 
@@ -146,6 +199,21 @@ Claude 3.5 Sonnet pricing:
 7. **Category** - Legal, Financial, Administrative, Technical, Other
 8. **Quality Issues** - Warnings about illegible/corrupt pages
 
+## Multi-Provider Fallback System
+
+The AI integration supports multiple providers with automatic fallback:
+
+**Priority Order (with `provider: "auto"`):**
+1. **OpenAI GPT-4o** - Tried first if API key available
+2. **Anthropic Claude** - Fallback if OpenAI fails or unavailable
+3. **No AI** - Continues without AI if both fail (graceful degradation)
+
+**Benefits:**
+- ✓ Higher reliability (redundancy if one provider is down)
+- ✓ Cost optimization (use cheaper provider)
+- ✓ Quota management (switch providers if one runs out)
+- ✓ Never blocks processing (always continues even if AI fails)
+
 ## Enhanced Cover Pages
 
 Cover pages now include:
@@ -155,7 +223,7 @@ Cover pages now include:
 - ✓ Extracted date and parties
 - ✓ Reference/case numbers
 - ✓ Quality warnings if detected
-- ✓ "Analyzed by Claude AI" attribution
+- ✓ "Analyzed by AI" attribution (shows which provider used)
 
 ## Enhanced Table of Contents
 
@@ -171,53 +239,83 @@ Shows:      "2. Service Agreement - Smith Corp"
 ## Performance
 
 - **Speed**: ~2-3 seconds per document for AI analysis
-- **Accuracy**: Claude 3.5 Sonnet has excellent document understanding
+- **Accuracy**: Both GPT-4o and Claude 3.5 Sonnet have excellent document understanding
+- **Provider Speed**: OpenAI GPT-4o is typically faster than Claude
 - **Caching**: Results can be cached to avoid re-analyzing same documents
 - **Parallel**: Could be enhanced to analyze multiple documents simultaneously
 
 ## Privacy & Security
 
-- **Your data**: Sent to Anthropic's API (see their privacy policy)
-- **Retention**: Anthropic doesn't train on API data
-- **API Key**: Keep your ANTHROPIC_API_KEY secure
+- **Your data**: Sent to OpenAI and/or Anthropic's API (see respective privacy policies)
+- **Retention**: Neither provider trains on API data by default
+- **API Keys**: Keep OPENAI_API_KEY and ANTHROPIC_API_KEY secure (use .env file)
 - **Sensitive docs**: Disable AI for confidential documents if needed
+- **Provider choice**: Use `"provider": "openai"` or `"provider": "anthropic"` to limit to one provider
 
 ## Troubleshooting
 
-### "AI features requested but anthropic package not installed"
+### "AI features enabled but no AI packages installed"
 ```bash
-pip install anthropic
+# Install one or both providers
+pip install openai anthropic
 ```
 
-### "AI features enabled but ANTHROPIC_API_KEY not set"
+### "AI features enabled but no API keys set"
 ```bash
-export ANTHROPIC_API_KEY=your-key-here
+# OpenAI (primary)
+export OPENAI_API_KEY=sk-proj-your-key-here
+
+# Anthropic (fallback)
+export ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+# Or use .env file (recommended)
+echo "OPENAI_API_KEY=sk-proj-..." >> .env
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+./run_with_ai.sh
 ```
 
-### "AI analysis failed for [file]"
-- Check if PDF is corrupted
-- Verify API key is valid
-- Check internet connection
-- See script_log.txt for details
+### "OpenAI analysis failed" followed by "Anthropic analysis failed"
+- Both providers unavailable - check:
+  - API keys are valid
+  - Account has credits/quota
+  - Internet connection working
+- Script will continue without AI (graceful degradation)
+
+### "Error code: 429 - insufficient_quota"
+- Account out of credits
+- Check billing at platform.openai.com or console.anthropic.com
+- Fallback provider will be tried automatically
 
 ### "AI returned invalid JSON"
-- Rare issue with Claude response format
+- Rare issue with AI response format
 - File will still process, just without AI metadata
-- Logged in script_log.txt
+- Logged in script_log.txt with details
+
+### Provider-specific issues
+
+**OpenAI:**
+- Verify key at https://platform.openai.com/api-keys
+- Check usage at https://platform.openai.com/usage
+
+**Anthropic:**
+- Verify key at https://console.anthropic.com/settings/keys
+- Check usage at https://console.anthropic.com/settings/billing
 
 ## Limitations
 
 **Current:**
 - Only analyzes PDF files (DOCX requires conversion)
 - Sequential processing (one at a time)
-- No offline mode
+- Requires internet connection
+- Requires API credits from at least one provider
 
 **Future Enhancements:**
-- Batch processing for speed
+- Batch/parallel processing for speed
 - Support for DOCX analysis
-- Local caching of results
+- Persistent caching of results
 - Custom prompts per document type
 - Multi-language support
+- Additional AI providers (Azure OpenAI, Google Gemini, etc.)
 
 ## Example Output
 
