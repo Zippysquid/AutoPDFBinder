@@ -38,6 +38,14 @@ from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 import PyPDF2
 import fitz  # PyMuPDF
 
+# AI Integration (optional)
+try:
+    import anthropic
+    import base64
+    HAS_ANTHROPIC = True
+except ImportError:
+    HAS_ANTHROPIC = False
+
 ###############################################################################
 # Configuration & Constants
 ###############################################################################
@@ -64,7 +72,13 @@ DESIGN_CONFIG = {
     'show_metadata': True,
     'use_icons': True,
     'add_toc_links': True,              # Enable clickable TOC links
-    'nested_bookmarks': True             # Enable nested bookmark hierarchy
+    'nested_bookmarks': True,            # Enable nested bookmark hierarchy
+    'ai_features': {
+        'enabled': False,                # Enable AI document analysis
+        'max_pages_to_analyze': 3,       # Number of pages to send to Claude
+        'cache_results': True,           # Cache AI analysis results
+        'model': 'claude-3-5-sonnet-20241022'
+    }
 }
 
 @dataclass
@@ -297,6 +311,113 @@ def apply_document_styles(doc: docx.Document) -> None:
     section.left_margin = Inches(1)
     section.right_margin = Inches(1)
 
+###############################################################################
+# AI Document Analysis
+###############################################################################
+def extract_pdf_preview(pdf_path: Path, max_pages: int = 3) -> List[bytes]:
+    """Extract first N pages of PDF as PNG images for Claude Vision"""
+    try:
+        doc = fitz.open(str(pdf_path))
+        images = []
+        for i in range(min(max_pages, len(doc))):
+            page = doc[i]
+            # Render at 150 DPI for good quality
+            pix = page.get_pixmap(dpi=150)
+            images.append(pix.tobytes("png"))
+        doc.close()
+        return images
+    except Exception as e:
+        log_error(f"Error extracting preview from {pdf_path.name}: {e}")
+        return []
+
+def analyze_document_with_ai(pdf_path: Path, filename: str) -> Optional[Dict]:
+    """Use Claude API to analyze document and extract metadata"""
+    if not HAS_ANTHROPIC:
+        return None
+
+    if not DESIGN_CONFIG.get('ai_features', {}).get('enabled', False):
+        return None
+
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        log_warning("AI features enabled but ANTHROPIC_API_KEY not set")
+        return None
+
+    try:
+        # Extract preview images
+        max_pages = DESIGN_CONFIG['ai_features'].get('max_pages_to_analyze', 3)
+        images = extract_pdf_preview(pdf_path, max_pages)
+
+        if not images:
+            return None
+
+        # Prepare Claude API call
+        client = anthropic.Anthropic(api_key=api_key)
+
+        # Build message content with images
+        content = []
+        for img in images:
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": base64.b64encode(img).decode()
+                }
+            })
+
+        # Add analysis prompt
+        content.append({
+            "type": "text",
+            "text": f"""Analyze this document (filename: {filename}).
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "title": "Actual document title from content (or null)",
+  "description": "One-line description max 100 chars (or null)",
+  "document_type": "Contract|Invoice|Report|Letter|Agreement|Memo|Other",
+  "date": "YYYY-MM-DD format if visible (or null)",
+  "parties": ["Party 1", "Party 2"] or null,
+  "reference_number": "Document/case/reference number (or null)",
+  "category": "Legal|Financial|Administrative|Technical|Other",
+  "quality_issues": "Brief note if pages corrupt/illegible (or null)"
+}}
+
+Rules:
+- Use null for any information not clearly visible
+- Keep description concise and professional
+- Extract exact dates in YYYY-MM-DD format
+- Identify all parties mentioned (people/organizations)
+- Be accurate - don't guess or infer beyond what's visible"""
+        })
+
+        # Call Claude API
+        model = DESIGN_CONFIG['ai_features'].get('model', 'claude-3-5-sonnet-20241022')
+        log_debug(f"Analyzing {filename} with Claude {model}...")
+
+        message = client.messages.create(
+            model=model,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": content}]
+        )
+
+        # Parse JSON response
+        response_text = message.content[0].text
+        ai_data = json.loads(response_text)
+
+        log(f"✓ AI analyzed: {filename}")
+        log_debug(f"  Title: {ai_data.get('title', 'N/A')}")
+        log_debug(f"  Type: {ai_data.get('document_type', 'N/A')}")
+
+        return ai_data
+
+    except json.JSONDecodeError as e:
+        log_warning(f"AI returned invalid JSON for {filename}: {e}")
+        return None
+    except Exception as e:
+        log_warning(f"AI analysis failed for {filename}: {e}")
+        return None
+
 def convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> bool:
     """Convert a DOCX file to PDF using Microsoft Word COM automation."""
     if not HAS_COM:
@@ -447,7 +568,7 @@ def add_toc_links(pdf_path: Path, link_entries: List[Tuple[str, int]], contents_
 ###############################################################################
 # Document Creation Functions
 ###############################################################################
-def create_cover_page_pdf(cover_pdf: Path, number: str, file_name: str, actual_path: Optional[Path] = None) -> None:
+def create_cover_page_pdf(cover_pdf: Path, number: str, file_name: str, actual_path: Optional[Path] = None, ai_data: Optional[Dict] = None) -> None:
     """Generate a cover page directly as PDF using PyMuPDF (cross-platform)."""
     log_debug(f"Creating cover page (PDF): {cover_pdf.name}")
 
@@ -462,32 +583,68 @@ def create_cover_page_pdf(cover_pdf: Path, number: str, file_name: str, actual_p
     header_rect = fitz.Rect(50, 50, 562, 120)
     page.draw_rect(header_rect, color=primary_color, fill=primary_color)
 
-    # Document number in header
-    page.insert_text((306, 95), f"DOCUMENT {number}",
+    # Document number and category in header
+    header_text = f"DOCUMENT {number}"
+    if ai_data and ai_data.get('category'):
+        header_text += f" | {ai_data['category']}"
+    page.insert_text((306, 95), header_text,
                      fontname="helv-bold", fontsize=14, color=(1, 1, 1), align=1)
 
-    # Main title
+    # Main title (use AI-extracted title if available)
     title_y = 300
-    page.insert_text((306, title_y), file_name,
-                     fontname="helv-bold", fontsize=22, color=(0, 0, 0), align=1)
+    display_title = ai_data.get('title') if ai_data and ai_data.get('title') else file_name
+    page.insert_text((306, title_y), display_title,
+                     fontname="helv-bold", fontsize=20, color=(0, 0, 0), align=1)
 
-    # Metadata box
+    # AI description (if available)
+    if ai_data and ai_data.get('description'):
+        page.insert_text((306, title_y + 30), ai_data['description'],
+                         fontname="helv-oblique", fontsize=11, color=text_gray, align=1)
+
+    # Metadata box (enhanced with AI data)
     if DESIGN_CONFIG['show_metadata']:
         meta_y = 400
-        metadata = [
-            ("Document Type:", get_file_type(file_name)),
-            ("File Size:", get_file_size_if_available(actual_path) if actual_path else "N/A"),
-            ("Generated:", time.strftime("%B %d, %Y at %I:%M %p"))
-        ]
+        metadata = []
+
+        # Add AI-extracted metadata first
+        if ai_data:
+            if ai_data.get('document_type'):
+                metadata.append(("Document Type:", ai_data['document_type']))
+            if ai_data.get('date'):
+                metadata.append(("Date:", ai_data['date']))
+            if ai_data.get('parties'):
+                parties_str = ', '.join(ai_data['parties'][:2])  # First 2 parties
+                if len(ai_data['parties']) > 2:
+                    parties_str += f" +{len(ai_data['parties']) - 2} more"
+                metadata.append(("Parties:", parties_str))
+            if ai_data.get('reference_number'):
+                metadata.append(("Reference:", ai_data['reference_number']))
+
+        # Add standard metadata
+        if not any(label == "Document Type:" for label, _ in metadata):
+            metadata.append(("Document Type:", get_file_type(file_name)))
+
+        metadata.append(("File Size:", get_file_size_if_available(actual_path) if actual_path else "N/A"))
+        metadata.append(("Generated:", time.strftime("%B %d, %Y at %I:%M %p")))
+
+        # Quality warning if AI detected issues
+        if ai_data and ai_data.get('quality_issues'):
+            metadata.append(("⚠ Warning:", ai_data['quality_issues']))
 
         for label, value in metadata:
-            page.insert_text((150, meta_y), label, fontname="helv-bold", fontsize=10, color=text_gray)
-            page.insert_text((280, meta_y), value, fontname="helv", fontsize=10, color=(0, 0, 0))
-            meta_y += 25
+            if value:  # Only show non-null values
+                page.insert_text((120, meta_y), label, fontname="helv-bold", fontsize=10, color=text_gray)
+                page.insert_text((250, meta_y), str(value), fontname="helv", fontsize=10, color=(0, 0, 0))
+                meta_y += 22
 
     # Bottom line
     line_y = 700
     page.draw_line((100, line_y), (512, line_y), color=(0.8, 0.8, 0.8), width=1)
+
+    # AI attribution (if used)
+    if ai_data:
+        page.insert_text((306, 750), "Analyzed by Claude AI",
+                         fontname="helv-oblique", fontsize=8, color=(0.7, 0.7, 0.7), align=1)
 
     doc.save(str(cover_pdf))
     doc.close()
@@ -875,6 +1032,8 @@ def main() -> None:
     parser.add_argument('--bates-start', type=int, help='Starting Bates number')
     parser.add_argument('--no-icons', action='store_true', help='Disable icons in TOC')
     parser.add_argument('--no-toc-links', action='store_true', help='Disable clickable TOC links')
+    parser.add_argument('--use-ai', action='store_true', help='Enable AI document analysis (requires ANTHROPIC_API_KEY)')
+    parser.add_argument('--ai-pages', type=int, default=3, help='Number of pages to analyze with AI (default: 3)')
 
     args = parser.parse_args()
 
@@ -903,6 +1062,14 @@ def main() -> None:
             DESIGN_CONFIG['use_icons'] = False
         if args.no_toc_links:
             DESIGN_CONFIG['add_toc_links'] = False
+        if args.use_ai:
+            if not HAS_ANTHROPIC:
+                log_error("AI features requested but anthropic package not installed")
+                log_error("Install with: pip install anthropic")
+                sys.exit(1)
+            DESIGN_CONFIG['ai_features']['enabled'] = True
+            DESIGN_CONFIG['ai_features']['max_pages_to_analyze'] = args.ai_pages
+            log(f"AI features enabled (analyzing first {args.ai_pages} pages)")
 
         OUTPUT_DIR.mkdir(exist_ok=True)
         log(f"Output directory: {OUTPUT_DIR}")
@@ -950,9 +1117,19 @@ def main() -> None:
 
         # Process files with error recovery
         processed: Dict[str, Tuple[Path, int, Path, int]] = {}
+        ai_cache: Dict[str, Optional[Dict]] = {}  # Cache AI results
+
         for idx, (num, p) in enumerate(real_files, 1):
             try:
                 print_progress(idx, stats.total_files, "Processing files")
+
+                # AI Analysis (if enabled)
+                ai_data = None
+                if DESIGN_CONFIG.get('ai_features', {}).get('enabled', False):
+                    # Only analyze PDFs (DOCX would need conversion first)
+                    if p.suffix.lower() == '.pdf':
+                        ai_data = analyze_document_with_ai(p, p.name)
+                        ai_cache[num] = ai_data
 
                 cover_pdf = OUTPUT_DIR / f"cover_{num}.pdf"
 
@@ -963,8 +1140,8 @@ def main() -> None:
                     if not convert_docx_to_pdf(cover_docx, cover_pdf):
                         raise Exception("Cover page conversion failed")
                 else:
-                    # Direct PDF creation (cross-platform)
-                    create_cover_page_pdf(cover_pdf, num, p.name, p)
+                    # Direct PDF creation (cross-platform) with AI data
+                    create_cover_page_pdf(cover_pdf, num, p.name, p, ai_data=ai_data)
 
                 cover_pages = pdf_page_count(cover_pdf)
 
