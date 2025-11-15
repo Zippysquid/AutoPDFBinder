@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Script outputs
+output/
+final_output.pdf
+script_log.txt
+*.temp.pdf
+*.bm.pdf
+*.links.pdf
+
+# Configuration (user-specific)
+config.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
